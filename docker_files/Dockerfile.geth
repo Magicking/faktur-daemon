@@ -1,0 +1,6 @@
+FROM ethereum/client-go
+
+ADD run.sh /
+ADD genesis.json /
+
+ENTRYPOINT /run.sh geth
