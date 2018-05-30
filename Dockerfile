@@ -8,6 +8,8 @@ ENV PROJECT_NAME faktur
 ADD vendor /usr/local/go/src
 ADD cmd /go/src/${PROJECT_DIR}/cmd
 ADD merkle /go/src/${PROJECT_DIR}/merkle
+ADD common /go/src/${PROJECT_DIR}/common
+ADD backends /go/src/${PROJECT_DIR}/backends
 ADD internal /go/src/${PROJECT_DIR}/internal
 
 WORKDIR /go/src/${PROJECT_DIR}

@@ -23,9 +23,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Magicking/faktur-daemon/backends"
+	"github.com/Magicking/faktur-daemon/common"
 	"github.com/Magicking/faktur-daemon/internal/anchor"
 
-	"github.com/ethereum/go-ethereum/common"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	flags "github.com/jessevdk/go-flags"
 )
 
@@ -48,9 +50,21 @@ func main() {
 		<-sigs
 		done <- true
 	}()
-	_, err := flags.Parse(&opts)
+
+	parser := flags.NewParser(nil, flags.Default)
+	parser.ShortDescription = "faktur"
+	parser.LongDescription = "faktur daemon\n"
+
+	_, err := parser.AddGroup("Services", "Services", &opts)
 	if err != nil {
-		return
+		log.Fatalf("Could not add group services: %v", err)
+	}
+	_, err = parser.AddGroup("HTTP Backend", "HTTP Backend", &backends.HTTPopts)
+	if err != nil {
+		log.Fatalf("Could not add group HTTP Backend: %v", err)
+	}
+	if _, err := parser.Parse(); err != nil {
+		log.Fatalf("Could not parse arguments: %v", err)
 	}
 	var nonce *big.Int
 	if opts.CacheNonce != "" {
@@ -78,10 +92,10 @@ func main() {
 		}*/
 
 	// create channel hash receiver
-	hashC := make(chan common.Hash, 1)
+	hashC := make(chan ethcommon.Hash, 1)
 	// TODO create channel preReceipt receiver
 	// create channel merkleRoot receiver
-	merkleRootC := make(chan common.Hash, 1)
+	merkleRootC := make(chan ethcommon.Hash, 1)
 	ctx := common.InitContext(context.Background())
 	common.NewDBToContext(ctx, opts.DbDSN)
 	common.NewGethClienToContext(ctx, opts.RpcURL)
