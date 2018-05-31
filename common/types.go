@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
 type key int
@@ -75,13 +76,11 @@ func InitContext(ctx context.Context) context.Context {
 }
 
 func NewDBToContext(ctx context.Context, dbDsn string) {
-	/*db, err := InitDatabase(dbDsn)
+	db, err := InitDatabase(dbDsn)
 	if err != nil {
 		log.Fatalf("Could not initialize database: %v", err)
 	}
 	setContextValue(ctx, dbKey, db)
-	TODO
-	*/
 }
 
 func DBFromContext(ctx context.Context) *gorm.DB {
@@ -93,7 +92,16 @@ func DBFromContext(ctx context.Context) *gorm.DB {
 	return ret
 }
 
-func NewGethClienToContext(ctx context.Context, rpc_url string) {
+func ClientFromContext(ctx context.Context) *ethclient.Client {
+	key := ethClientKey
+	ret, ok := getContextValue(ctx, key).(*ethclient.Client)
+	if !ok {
+		log.Fatalf("Could not cast context with key %d", key)
+	}
+	return ret
+}
+
+func NewGethClientToContext(ctx context.Context, rpc_url string) {
 	var client *ethclient.Client
 	var err error
 	for i := 1; i < 10; i++ {
@@ -113,13 +121,24 @@ func NewGethClienToContext(ctx context.Context, rpc_url string) {
 	setContextValue(ctx, ethClientKey, client)
 }
 
-func ClientFromContext(ctx context.Context) *ethclient.Client {
-	key := ethClientKey
-	ret, ok := getContextValue(ctx, key).(*ethclient.Client)
-	if !ok {
-		log.Fatalf("Could not cast context with key %d", key)
+func InitDatabase(dbDsn string) (*gorm.DB, error) {
+	var err error
+	var db *gorm.DB
+
+	for i := 1; i < 10; i++ {
+		db, err = gorm.Open("postgres", dbDsn)
+		if err == nil || i == 10 {
+			break
+		}
+		sleep := (2 << uint(i)) * time.Second
+		log.Printf("Could not connect to DB: %v", err)
+		log.Printf("Waiting %v before retry", sleep)
+		time.Sleep(sleep)
 	}
-	return ret
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 /*

@@ -27,6 +27,7 @@ import (
 	"github.com/Magicking/faktur-daemon/backends"
 	"github.com/Magicking/faktur-daemon/common"
 	"github.com/Magicking/faktur-daemon/internal/anchor"
+	"github.com/Magicking/faktur-daemon/internal/db"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -50,7 +51,10 @@ func main() {
 	// TODO reload config ?
 	go func() {
 		<-sigs
-		log.Fatal("Exiting early")
+		go func() {
+			time.Sleep(2 * time.Second)
+			log.Fatal("Forced interrupt")
+		}()
 		done <- true
 	}()
 
@@ -104,7 +108,8 @@ func main() {
 	merkleRootC := make(chan ethcommon.Hash, 1)
 	ctx := common.InitContext(context.Background())
 	common.NewDBToContext(ctx, opts.DbDSN)
-	common.NewGethClienToContext(ctx, opts.RpcURL)
+	db.DBFixture(ctx)
+	common.NewGethClientToContext(ctx, opts.RpcURL)
 
 	// Setup ethereum transaction sender/signer
 	key, err := crypto.HexToECDSA(opts.PrivateKey)
