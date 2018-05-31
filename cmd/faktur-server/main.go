@@ -22,12 +22,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Magicking/faktur-daemon/backends"
 	"github.com/Magicking/faktur-daemon/common"
 	"github.com/Magicking/faktur-daemon/internal/anchor"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	flags "github.com/jessevdk/go-flags"
 )
 
@@ -48,6 +50,7 @@ func main() {
 	// TODO reload config ?
 	go func() {
 		<-sigs
+		log.Fatal("Exiting early")
 		done <- true
 	}()
 
@@ -66,20 +69,23 @@ func main() {
 	if _, err := parser.Parse(); err != nil {
 		log.Fatalf("Could not parse arguments: %v", err)
 	}
-	var nonce *big.Int
+	var nonce uint64
 	if opts.CacheNonce != "" {
 		_nonce, err := ioutil.ReadFile(opts.CacheNonce)
 		if err != nil {
 			log.Println("ReadFile", err)
 		} else {
-			nonce = big.NewInt(0).SetBytes(_nonce)
+			nonce = big.NewInt(0).SetBytes(_nonce).Uint64()
 		}
 	}
+	chainId := new(big.Int)
+	chainId.SetString(opts.ChainId, 10)
+	contractAddress := ethcommon.HexToAddress(opts.ContractAddress)
 	log.Printf("Anchor version 0.1")
 	log.Printf("RPC URL %v", opts.RpcURL)
-	log.Printf("Chain ID %v", opts.ChainId)
+	log.Printf("Chain ID %v", chainId.String())
 	log.Printf("Nonce %v", nonce)
-	log.Printf("Contract is at: %v", opts.ContractAddress)
+	log.Printf("Contract is at: %v", contractAddress.Hex())
 	/*
 		var buf []byte
 		if err == nil {
@@ -99,14 +105,31 @@ func main() {
 	ctx := common.InitContext(context.Background())
 	common.NewDBToContext(ctx, opts.DbDSN)
 	common.NewGethClienToContext(ctx, opts.RpcURL)
+
+	// Setup ethereum transaction sender/signer
+	key, err := crypto.HexToECDSA(opts.PrivateKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	anc := anchor.NewAnchor(key, nonce, chainId)
+
 	// TODO Get timeout from Smart Contract
-	timeout := big.NewInt(10)
+	timeout := time.Duration(1 * time.Second)
 	go anchor.AnchorDaemon(hashC, merkleRootC, timeout)
 	// Handle gathering hash
 	// On timeout (period/10) produce merkleRoot and send that to merkleRoot chan
 	// Send signed preReceipt
 	// go start receiver
+	http, err := backends.NewHTTP(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := http.Init(ctx, hashC); err != nil {
+		log.Fatal(err)
+	}
+	go http.Run(ctx)
 	// go start preReceipt submitter
 	// go start merkleRoot submitter
+	go anc.Run(ctx, contractAddress, merkleRootC)
 	<-done
 }

@@ -75,11 +75,13 @@ func InitContext(ctx context.Context) context.Context {
 }
 
 func NewDBToContext(ctx context.Context, dbDsn string) {
-	db, err := InitDatabase(dbDsn)
+	/*db, err := InitDatabase(dbDsn)
 	if err != nil {
 		log.Fatalf("Could not initialize database: %v", err)
 	}
 	setContextValue(ctx, dbKey, db)
+	TODO
+	*/
 }
 
 func DBFromContext(ctx context.Context) *gorm.DB {

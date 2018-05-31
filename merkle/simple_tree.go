@@ -46,8 +46,21 @@ import (
 )
 
 type Hashable interface {
-	Hash() []byte
 	Bytes() []byte
+}
+
+type OrderedBytes []Hashable
+
+func (h OrderedBytes) Less(i, j int) bool {
+	return bytes.Compare(h[i].Bytes(), h[j].Bytes()) < 0
+}
+
+func (h OrderedBytes) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h OrderedBytes) Len() int {
+	return len(h)
 }
 
 // Chainpoint 2.1 Proof version
