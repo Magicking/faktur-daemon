@@ -27,6 +27,7 @@ import (
 	"github.com/Magicking/faktur-daemon/backends"
 	"github.com/Magicking/faktur-daemon/common"
 	"github.com/Magicking/faktur-daemon/internal/anchor"
+	"github.com/Magicking/faktur-daemon/internal/db"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -104,6 +105,7 @@ func main() {
 	merkleRootC := make(chan ethcommon.Hash, 1)
 	ctx := common.InitContext(context.Background())
 	common.NewDBToContext(ctx, opts.DbDSN)
+	db.MigrateDatabase(ctx)
 	common.NewGethClienToContext(ctx, opts.RpcURL)
 
 	// Setup ethereum transaction sender/signer
@@ -115,7 +117,7 @@ func main() {
 
 	// TODO Get timeout from Smart Contract
 	timeout := time.Duration(1 * time.Second)
-	go anchor.AnchorDaemon(hashC, merkleRootC, timeout)
+	go anchor.AnchorDaemon(ctx, hashC, merkleRootC, timeout)
 	// Handle gathering hash
 	// On timeout (period/10) produce merkleRoot and send that to merkleRoot chan
 	// Send signed preReceipt
