@@ -14,15 +14,17 @@
 package anchor
 
 import (
+	"context"
 	"log"
 	"sort"
 	"time"
 
+	"github.com/Magicking/faktur-daemon/internal/db"
 	"github.com/Magicking/faktur-daemon/merkle"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func AnchorDaemon(hashC chan common.Hash, merkleRootC chan common.Hash, timeout time.Duration) {
+func AnchorDaemon(ctx context.Context, hashC chan common.Hash, merkleRootC chan common.Hash, timeout time.Duration) {
 
 	ticker := time.NewTicker(timeout)
 	var hashs []merkle.Hashable
@@ -38,18 +40,18 @@ func AnchorDaemon(hashC chan common.Hash, merkleRootC chan common.Hash, timeout 
 			log.Printf("Hashs length: %v", len(hashs))
 			// For Merkle tree order stability
 			sort.Sort(merkle.OrderedBytes(hashs))
-			receipts, merkleRoot := merkle.NewChainpoints(hashs)
-			hashs = make([]merkle.Hashable, 0)
+			merkleRoot, receipts := merkle.MerkleTreeHashProofsFromHashables(hashs)
 			root := common.BytesToHash(merkleRoot)
+			// save to database with merkleroot as key
+			for i, e := range receipts {
+				// Save Receipt
+				db.SaveReceipt(ctx, e, hashs[i], root)
+			}
 			// Send merkleRoot to blockchain
 			merkleRootC <- root
 			log.Printf("Hash Root: %v\nReceipts len: %v", root.Hex(), len(receipts))
+			hashs = nil
 		}
 	}
-	/*
-		for i, v := range receipts {
-			//fill receipt
-			v.Anchors = []merkle.AnchorPoint{merkle.AnchorPoint{SourceID: txhash.String(), Type: "ETHData"}}
-		}*/
 
 }
