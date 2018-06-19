@@ -75,13 +75,23 @@ func InitContext(ctx context.Context) context.Context {
 }
 
 func NewDBToContext(ctx context.Context, dbDsn string) {
-	/*db, err := InitDatabase(dbDsn)
+	var err error
+	var db *gorm.DB
+
+	for i := 1; i < 10; i++ {
+		db, err = gorm.Open("postgres", dbDsn)
+		if err == nil || i == 10 {
+			break
+		}
+		sleep := (2 << uint(i)) * time.Second
+		log.Printf("Could not connect to DB: %v", err)
+		log.Printf("Waiting %v before retry", sleep)
+		time.Sleep(sleep)
+	}
 	if err != nil {
 		log.Fatalf("Could not initialize database: %v", err)
 	}
 	setContextValue(ctx, dbKey, db)
-	TODO
-	*/
 }
 
 func DBFromContext(ctx context.Context) *gorm.DB {
