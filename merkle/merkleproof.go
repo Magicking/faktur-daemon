@@ -36,22 +36,17 @@ type AnchorPoint struct {
 	Type     string `json:"type"`
 }
 
-type ChainpointLeafString struct {
-	Left  string `json:"left,omitempty"`  // Hashes from leaf's sibling to a root's child.
-	Right string `json:"right,omitempty"` // Hashes from leaf's sibling to a root's child.
-}
-
 type Chainpoint struct {
-	Context    string                 `json:"@context"`
-	Anchors    []AnchorPoint          `json:"anchors"`
-	MerkleRoot string                 `json:"merkleRoot"`
-	Proof      []ChainpointLeafString `json:"proof"`
-	TargetHash string                 `json:"targetHash"`
-	Type       string                 `json:"type"`
+	Context    string        `json:"@context"`
+	Anchors    []AnchorPoint `json:"anchors"`
+	MerkleRoot string        `json:"merkleRoot"`
+	Proof      Branch        `json:"proof"`
+	TargetHash string        `json:"targetHash"`
+	Type       string        `json:"type"`
 }
 
 func NewChainpoints(items []Hashable) ([]Chainpoint, []byte) {
-	rootH, proofs := ChainpointProofsFromHashables(items)
+	rootH, proofs := MerkleTreeHashProofsFromHashables(items)
 	if len(proofs) != len(items) {
 		panic("Not all items were entered into merkle tree")
 	}
@@ -59,22 +54,21 @@ func NewChainpoints(items []Hashable) ([]Chainpoint, []byte) {
 	for i, v := range items {
 		unanchoredReceipts[i].Type = "ChainpointSHA3-256v2"
 		unanchoredReceipts[i].Context = "https://w3id.org/chainpoint/v2"
-		unanchoredReceipts[i].Proof = proofs[i].Chainpoint()
+		unanchoredReceipts[i].Proof = *proofs[i]
 		unanchoredReceipts[i].MerkleRoot = hex.EncodeToString(rootH)
 		unanchoredReceipts[i].TargetHash = hex.EncodeToString(v.Bytes())
 	}
 	return unanchoredReceipts, rootH
 }
 
-func (cp *Chainpoint) MerkleVerify() bool {
+func (cp *Chainpoint) Verify() bool {
 	targetHash, err := hex.DecodeString(cp.TargetHash)
 	if err != nil {
 		return false
 	}
-	aunts := ChainpointProofFromStringAunt(cp.Proof)
 	root, err := hex.DecodeString(cp.MerkleRoot)
 	if err != nil {
 		return false
 	}
-	return Verify(targetHash, aunts, root)
+	return Verify(targetHash, cp.Proof, root)
 }

@@ -40,7 +40,6 @@ package merkle
 
 import (
 	"bytes"
-	"encoding/hex"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -63,7 +62,7 @@ func (h OrderedBytes) Len() int {
 	return len(h)
 }
 
-// Chainpoint 2.1 Proof version
+// Merkle Tree Hash Proof version
 func SimpleHashFromTwoHashes(left []byte, right []byte) []byte {
 	buffer := [][]byte{left, right}
 	hashed := sha3.Sum256(bytes.Join(buffer, nil))
@@ -87,56 +86,70 @@ func SimpleHashFromHashes(hashes [][]byte) []byte {
 
 //--------------------------------------------------------------------------------
 
-type ChainpointLeaf struct {
-	Left  []byte // Hashes from leaf's sibling to a root's child.
-	Right []byte // Hashes from leaf's sibling to a root's child.
+type Leaf struct {
+	Left  []byte `json:"left,omitempty"`  // Hashes from leaf's sibling to a root's child.
+	Right []byte `json:"right,omitempty"` // Hashes from leaf's sibling to a root's child.
 }
 
-type ChainpointProof struct {
-	Aunts []ChainpointLeaf // Hashes from leaf's sibling to a root's child.
+func (l *Leaf) Serialize() string {
+	if l.Left != nil && l.Right != nil {
+		panic("Both left and right leaf set")
+	}
+	if l.Left == nil && l.Right == nil {
+		panic("Both left and right leaf unset")
+	}
+	if l.Left != nil {
+		return string(l.Left)
+	}
+	return string(l.Right)
+}
+
+type Branch struct {
+	AuditPath []Leaf // Hashes from leaf's sibling to a root's child.
+}
+
+func (b *Branch) String() (ret string) {
+	var buffer bytes.Buffer
+	for i, r := range b.AuditPath {
+		if r.Left != nil {
+			buffer.WriteRune('0')
+			buffer.Write(r.Left)
+			continue
+		}
+		if r.Write != nil {
+			buffer.WriteRune('1')
+			buffer.Write(r.Right)
+			continue
+		}
+		panic("Both left and right leaf unset")
+	}
+	return ret.String()
+}
+
+func (b *Branch) Serialize() (ret string) {
+	for _, _ = range b.AuditPath {
+		//set bitmap
+		return "TODO1" //TODO
+	}
+	return "TODO2"
 }
 
 // proofs[0] is the proof for items[0].
-func ChainpointProofsFromHashables(items []Hashable) (rootHash []byte, proofs []*ChainpointProof) {
+func MerkleTreeHashProofsFromHashables(items []Hashable) (rootHash []byte, proofs []*Branch) {
 	trails, rootSPN := trailsFromHashables(items)
 	rootHash = rootSPN.Hash
-	proofs = make([]*ChainpointProof, len(items))
+	proofs = make([]*Branch, len(items))
 	for i, trail := range trails {
-		proofs[i] = &ChainpointProof{
-			Aunts: trail.FlattenAunts(),
+		proofs[i] = &Branch{
+			AuditPath: trail.FlattenAunts(),
 		}
 	}
 	return
 }
 
-func ChainpointProofFromStringAunt(aunts []ChainpointLeafString) ChainpointProof {
-	_aunts := make([]ChainpointLeaf, len(aunts))
-	for i, v := range aunts {
-		var cpl ChainpointLeaf
-		if v.Left != "" {
-			left, err := hex.DecodeString(v.Left)
-			if err != nil {
-				panic(err)
-			}
-			cpl = ChainpointLeaf{Left: left}
-		} else if v.Right != "" {
-			right, err := hex.DecodeString(v.Right)
-			if err != nil {
-				panic(err)
-			}
-			cpl = ChainpointLeaf{Right: right}
-		} else {
-			panic("Left and right both unset !")
-		}
-		_aunts[i] = cpl
-	}
-
-	return ChainpointProof{Aunts: _aunts}
-}
-
 // Verify that leafHash is a leaf hash of the simple-merkle-tree
 // which hashes to rootHash.
-func Verify(targetHash []byte, proof ChainpointProof, rootHash []byte) bool {
+func Verify(targetHash []byte, proof Branch, rootHash []byte) bool {
 	computedHash := computeHashFromAunts(targetHash, proof)
 	if computedHash == nil {
 		return false
@@ -147,34 +160,17 @@ func Verify(targetHash []byte, proof ChainpointProof, rootHash []byte) bool {
 	return true
 }
 
-func (sp *ChainpointLeaf) Chainpoint() ChainpointLeafString {
-	if sp.Left != nil {
-		return ChainpointLeafString{Left: hex.EncodeToString(sp.Left)}
-	}
-	return ChainpointLeafString{Right: hex.EncodeToString(sp.Right)}
-}
-
-func (sp *ChainpointProof) Chainpoint() []ChainpointLeafString {
-	var aunts []ChainpointLeafString
-
-	for _, a := range sp.Aunts {
-		aunts = append(aunts, a.Chainpoint())
-	}
-
-	return aunts
-}
-
 // Use the leafHash and innerHashes to get the root merkle hash.
 // If the length of the innerHashes slice isn't exactly correct, the result is nil.
-func computeHashFromAunts(targetHash []byte, proofs ChainpointProof) []byte {
+func computeHashFromAunts(targetHash []byte, proofs Branch) []byte {
 	result := targetHash
-	for _, proof := range proofs.Aunts {
+	for _, proof := range proofs.AuditPath {
 		if proof.Left != nil {
 			result = SimpleHashFromTwoHashes(proof.Left, result)
 		} else if proof.Right != nil {
 			result = SimpleHashFromTwoHashes(result, proof.Right)
 		} else {
-			panic("Left or right should be set for ChainpointProof")
+			panic("Left or right should be set for leaf proof")
 		}
 	}
 	return result
@@ -194,14 +190,14 @@ type SimpleProofNode struct {
 
 // Starting from a leaf SimpleProofNode, FlattenAunts() will return
 // the inner hashes for the item corresponding to the leaf.
-func (spn *SimpleProofNode) FlattenAunts() (leaflist []ChainpointLeaf) {
+func (spn *SimpleProofNode) FlattenAunts() (leaflist []Leaf) {
 	// Nonrecursive impl.
 	for spn != nil {
-		var lv ChainpointLeaf
+		var lv Leaf
 		if spn.Left != nil {
-			lv = ChainpointLeaf{Left: spn.Left.Hash}
+			lv = Leaf{Left: spn.Left.Hash}
 		} else if spn.Right != nil {
-			lv = ChainpointLeaf{Right: spn.Right.Hash}
+			lv = Leaf{Right: spn.Right.Hash}
 		} else {
 			break
 		}
