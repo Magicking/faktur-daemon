@@ -14,15 +14,32 @@
 
 package common
 
+import (
+	"crypto/ecdsa"
+
+	"github.com/Magicking/faktur-daemon/merkle"
+	ethcommon "github.com/ethereum/go-ethereum/common"
+)
+
 // Internal receipt format
 
-type Leaf struct {
-	Left  string `json:"left,omitempty"`  // Hashes from leaf's sibling to a root's child.
-	Right string `json:"right,omitempty"` // Hashes from leaf's sibling to a root's child.
+type Receipt struct {
+	Proof      merkle.Branch  `json:"proof"`
+	MerkleRoot ethcommon.Hash `json:"merkleRoot"`
+	TargetHash ethcommon.Hash `json:"targetHash"`
 }
 
-type Receipt struct {
-	Proof      []Leaf `json:"proof"`
-	MerkleRoot string `json:"merkleRoot"`
-	TargetHash string `json:"targetHash"`
+type Faktur struct {
+	Receipt
+	PrivateKey *ecdsa.PrivateKey
+}
+
+// TODO
+func NewFaktur(r *Receipt, p *ecdsa.PrivateKey) *Faktur {
+	return nil
+}
+
+// TODO
+func (f *Faktur) Serialize() []byte {
+	return nil
 }
