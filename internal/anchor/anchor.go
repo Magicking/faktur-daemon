@@ -121,9 +121,9 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 						continue
 					}
 					log.Printf("Transaction sent: %v", txHash.Hex())
-					// TODO Save merkleroot to database with state WAITING CONFIRMATION
+					// TODO Save merkleroot to database with state WAITING_CONFIRMATION
 				}
-				// GET WAITING CONFIRMATION
+				// GET WAITING_CONFIRMATION
 				// Check if timeout too old
 				// Set to retry if necessary
 				a.updateNonce(ctx)
@@ -131,8 +131,10 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 			//SEND
 		}
 	}()
+	// Get NOT_SENT
+	// re-emit every TXs in not SENT_STATE
 	for e := range c {
-		// TODO Save merkleroot to database with state NOT SENT
+		// TODO Save merkleroot to database with state NOT_SENT
 		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), e.Bytes())
 		if err != nil {
 			// TODO Save merkleroot to database with state RETRY
@@ -140,6 +142,6 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 			continue
 		}
 		log.Printf("Transaction sent: %v", txHash.Hex())
-		// TODO Save merkleroot to database with state WAITING CONFIRMATION
+		// TODO Save merkleroot to database with state WAITING_CONFIRMATION
 	}
 }
