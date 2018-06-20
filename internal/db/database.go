@@ -33,16 +33,16 @@ func CreateNewRoot(ctx context.Context, _root string) (*RootEntry, error) {
 // Set internal state
 func SetState(ctx context.Context, root *RootEntry, state string) error {
 	db := cmn.DBFromContext(ctx)
-	if err := db.Model(root).Updates(&RootEntry{State: state}).Error; err != nil {
+	if err := db.Model(root).Updates(&RootEntry{State: state, LastUpdate: time.Now()}).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
 // Finalize by setting the txhash
-func FinalizeRoot(ctx context.Context, root *RootEntry, _txHash string) error {
+func FinalizeRoot(ctx context.Context, root *RootEntry, state, _txHash string) error {
 	db := cmn.DBFromContext(ctx)
-	if err := db.Model(root).Updates(&RootEntry{State: "final", TxHash: _txHash}).Error; err != nil {
+	if err := db.Model(root).Updates(&RootEntry{State: state, TxHash: _txHash, LastUpdate: time.Now()}).Error; err != nil {
 		return err
 	}
 	return nil

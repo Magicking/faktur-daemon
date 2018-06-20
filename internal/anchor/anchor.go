@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/Magicking/faktur-daemon/internal/db"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -99,6 +100,60 @@ func (a *Anchor) updateNonce(ctx context.Context) error {
 	return nil
 }
 
+func (a *Anchor) updateWaiting(ctx context.Context) {
+	nc := cmn.ClientFromContext(ctx)
+	roots, err := db.FilterByState(ctx, "waiting")
+	if err != nil {
+		log.Printf("Could not query database: %v", err)
+		return
+	}
+	for _, entry := range roots {
+		txHash := common.HexToHash(entry.TxHash)
+		rcpt, err := nc.TransactionReceipt(ctx, txHash)
+		if err != nil {
+			log.Printf("TransactionReceipt(%v): %v", txHash.Hex(), err)
+			continue
+		}
+		if rcpt != nil {
+			if err = db.SetState(ctx, &entry, "final"); err != nil {
+				log.Printf("TODO Could not save merkle root %v: %v", txHash.Hex(), err)
+				continue
+			}
+			log.Printf("Root: %v; Merkle: %v", entry.Root, entry.TxHash)
+			continue
+		}
+		// Check if timeout too old
+		log.Println(entry)
+		// Set to retry if necessary
+	}
+}
+
+func (a *Anchor) updateRetry(ctx context.Context, contractAddress common.Address) {
+	roots, err := db.FilterByState(ctx, "retry")
+	if err != nil {
+		log.Printf("Could not query database: %v", err)
+		return
+	}
+	for _, entry := range roots {
+		root := common.HexToHash(entry.Root)
+		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
+		if err != nil {
+			// TODO Save merkleroot to database with state RETRY
+			log.Printf("Could not sent transaction for hash %v: %v", root.Hex(), err)
+			if err = db.SetState(ctx, &entry, "retry"); err != nil {
+				log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
+			}
+			continue
+		}
+		log.Printf("Transaction sent: %v", txHash.Hex())
+		// TODO Save merkleroot to database with state WAITING CONFIRMATION
+		if err = db.FinalizeRoot(ctx, &entry, "waiting", txHash.Hex()); err != nil {
+			log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
+			continue
+		}
+	}
+}
+
 func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan common.Hash) {
 	if a.lastNonce == 0 {
 		if err := a.updateNonce(ctx); err != nil {
@@ -106,40 +161,36 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 		}
 	}
 
-	go func() {
-		ticker := time.NewTicker(time.Duration(10 * time.Second))
-		for {
-			select {
-			case <-ticker.C:
-				// Get RETRY
-				roots := []common.Hash{}
-				for _, root := range roots {
-					txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
-					if err != nil {
-						// TODO Save merkleroot to database with state RETRY
-						log.Printf("Could not sent transaction for hash %v: %v", root.Hex(), err)
-						continue
-					}
-					log.Printf("Transaction sent: %v", txHash.Hex())
-					// TODO Save merkleroot to database with state WAITING CONFIRMATION
-				}
-				// GET WAITING CONFIRMATION
-				// Check if timeout too old
-				// Set to retry if necessary
-				a.updateNonce(ctx)
+	ticker := time.NewTicker(time.Duration(10 * time.Second))
+	for {
+		select {
+		case <-ticker.C:
+			// Get RETRY
+			a.updateRetry(ctx, contractAddress)
+			a.updateWaiting(ctx)
+			a.updateNonce(ctx)
+		case e := <-c:
+			// TODO Save merkleroot to database with state NOT SENT
+			root, err := db.CreateNewRoot(ctx, e.Hex())
+			if err != nil {
+				log.Printf("Could not insert root %v in database: %v", e.Hex(), err)
+				continue
 			}
-			//SEND
+			txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), e.Bytes())
+			if err != nil {
+				// TODO Save merkleroot to database with state RETRY
+				log.Printf("Could not sent transaction for hash %v: %v", e.Hex(), err)
+				if err = db.SetState(ctx, root, "retry"); err != nil {
+					log.Printf("Could not save merkle root %v: %v", e.Hex(), err)
+				}
+				continue
+			}
+			log.Printf("Transaction sent: %v", txHash.Hex())
+			// TODO Save merkleroot to database with state WAITING CONFIRMATION
+			if err = db.FinalizeRoot(ctx, root, "waiting", txHash.Hex()); err != nil {
+				log.Printf("Could not save merkle root %v: %v", e.Hex(), err)
+				continue
+			}
 		}
-	}()
-	for e := range c {
-		// TODO Save merkleroot to database with state NOT SENT
-		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), e.Bytes())
-		if err != nil {
-			// TODO Save merkleroot to database with state RETRY
-			log.Printf("Could not sent transaction for hash %v: %v", e.Hex(), err)
-			continue
-		}
-		log.Printf("Transaction sent: %v", txHash.Hex())
-		// TODO Save merkleroot to database with state WAITING CONFIRMATION
 	}
 }
