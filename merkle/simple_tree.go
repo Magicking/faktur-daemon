@@ -46,8 +46,14 @@ import (
 
 type Hashable interface {
 	Bytes() []byte
+	Hex() string
 }
 
+/*
+func (h Hashable) Hex() string {
+	return hex.EncodeToString(h.Bytes())
+}
+*/
 type OrderedBytes []Hashable
 
 func (h OrderedBytes) Less(i, j int) bool {
@@ -110,20 +116,20 @@ type Branch struct {
 
 func (b *Branch) String() (ret string) {
 	var buffer bytes.Buffer
-	for i, r := range b.AuditPath {
+	for _, r := range b.AuditPath {
 		if r.Left != nil {
 			buffer.WriteRune('0')
 			buffer.Write(r.Left)
 			continue
 		}
-		if r.Write != nil {
+		if r.Right != nil {
 			buffer.WriteRune('1')
 			buffer.Write(r.Right)
 			continue
 		}
 		panic("Both left and right leaf unset")
 	}
-	return ret.String()
+	return buffer.String()
 }
 
 func (b *Branch) Serialize() (ret string) {

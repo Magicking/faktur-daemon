@@ -1,8 +1,8 @@
 #!/bin/sh
 
-DATA_DIR=/data
+DATA_DIR=/tmp/data
 PASSWORD=THISISARANDOMPASSWORD
-password_file=/signer.password
+password_file=`mktemp`
 # See https://github.com/ethereum/EIPs/issues/225 for genesis specification
 GENESIS_PATH=/genesis.json
 CORS_DOMAIN="*"

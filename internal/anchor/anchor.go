@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/Magicking/faktur-daemon/internal/db"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -97,6 +98,61 @@ func (a *Anchor) updateNonce(ctx context.Context) error {
 	log.Println("Nonce updated to", nonce)
 	a.lastNonce = nonce
 	return nil
+}
+
+func (a *Anchor) updateWaiting(ctx context.Context) {
+	nc := cmn.ClientFromContext(ctx)
+	roots, err := db.FilterByState(ctx, db.WAITING_CONFIRMATION)
+	if err != nil {
+		log.Printf("Could not query database: %v", err)
+		return
+	}
+	for _, entry := range roots {
+		txHash := common.HexToHash(entry.TransactionHash)
+		root := common.HexToHash(entry.MerkleRoot)
+		rcpt, err := nc.TransactionReceipt(ctx, txHash)
+		if err != nil {
+			log.Printf("TransactionReceipt(%v): %v", txHash.Hex(), err)
+			continue
+		}
+		if rcpt != nil {
+			if err = db.UpdateTx(ctx, root, nil, db.SENT); err != nil {
+				log.Printf("TODO Could not save merkle root %v: %v", txHash.Hex(), err)
+				continue
+			}
+			log.Printf("Root: %v; Merkle: %v", root, txHash)
+			continue
+		}
+		// Check if timeout too old
+		log.Println(entry)
+		// Set to retry if necessary
+	}
+}
+
+func (a *Anchor) updateRetry(ctx context.Context, contractAddress common.Address) {
+	roots, err := db.FilterByState(ctx, db.RETRY)
+	if err != nil {
+		log.Printf("Could not query database: %v", err)
+		return
+	}
+	for _, entry := range roots {
+		root := common.HexToHash(entry.MerkleRoot)
+		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
+		if err != nil {
+			// TODO Save merkleroot to database with state RETRY
+			log.Printf("Could not sent transaction for hash %v: %v", root.Hex(), err)
+			if err = db.SaveTx(ctx, root, ethcommon.Hash{}, db.NOT_SENT); err != nil {
+				log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
+			}
+			continue
+		}
+		log.Printf("Transaction sent: %v", txHash.Hex())
+		// TODO Save merkleroot to database with state WAITING CONFIRMATION
+		if err = db.UpdateTx(ctx, root, &txHash, db.WAITING_CONFIRMATION); err != nil {
+			log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
+			continue
+		}
+	}
 }
 
 func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan common.Hash) {

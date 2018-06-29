@@ -51,7 +51,10 @@ func main() {
 	// TODO reload config ?
 	go func() {
 		<-sigs
-		log.Fatal("Exiting early")
+		go func() {
+			time.Sleep(2 * time.Second)
+			log.Fatal("Forced interrupt")
+		}()
 		done <- true
 	}()
 

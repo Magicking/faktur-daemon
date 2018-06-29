@@ -47,20 +47,12 @@ func SaveReceipt(ctx context.Context, proofs *merkle.Branch, targetHash merkle.H
 	return nil
 }
 
-/*
-type dbTransaction struct {
-	gorm.Model
-	MerkleRoot      string
-	TransactionHash string
-	Status          int
-}*/
-
-func SaveTx(ctx context.Context, root, txHash ethcommon.Hash) error {
+func SaveTx(ctx context.Context, root, txHash ethcommon.Hash, state int) error {
 	db := common.DBFromContext(ctx)
 	dbtx := dbTransaction{
 		MerkleRoot:      root.Hex(),
 		TransactionHash: txHash.Hex(),
-		Status:          NOT_SENT,
+		Status:          state,
 	}
 	if err := db.Create(&dbtx).Error; err != nil {
 		return err
@@ -68,13 +60,33 @@ func SaveTx(ctx context.Context, root, txHash ethcommon.Hash) error {
 	return nil
 }
 
-func GetTxsFilter(ctx context.Context, state int) (*dbTransaction, error) {
+func UpdateTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, state int) error {
 	db := common.DBFromContext(ctx)
-	var dbtx dbTransaction
-	if err := db.Where(&dbTransaction{Status: state}).Last(&dbtx).Error; err != nil {
+	cursor := db.Where(&dbTransaction{MerkleRoot: root.Hex()})
+	if cursor.Error != nil {
+		return cursor.Error
+	}
+	if txHash != nil {
+		cursor = cursor.Updates(&dbTransaction{Status: state, TransactionHash: txHash.Hex()})
+	} else {
+		cursor = cursor.Updates(&dbTransaction{Status: state})
+	}
+	if cursor.Error != nil {
+		return cursor.Error
+	}
+	return nil
+}
+
+func FilterByState(ctx context.Context, state int) (dbtx []*dbTransaction, err error) {
+	db := common.DBFromContext(ctx)
+	cursor := db.Where(&dbTransaction{Status: state}).Find(dbtx)
+	if cursor.Error != nil {
 		return nil, err
 	}
-	return &dbtxnil, nil
+	if cursor.RecordNotFound() {
+		return nil, nil
+	}
+	return dbtx, nil
 }
 
 // Get    Txs w/ STATUS
