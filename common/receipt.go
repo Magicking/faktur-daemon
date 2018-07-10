@@ -29,6 +29,7 @@ type Receipt struct {
 	TargetHash ethcommon.Hash `json:"targetHash"`
 }
 
+// TODO Should move to his own repo/project that should submit only final hash
 type Faktur struct {
 	Receipt
 	PrivateKey *ecdsa.PrivateKey
