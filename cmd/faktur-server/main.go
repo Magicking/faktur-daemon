@@ -109,7 +109,7 @@ func main() {
 	ctx := common.InitContext(context.Background())
 	common.NewDBToContext(ctx, opts.DbDSN)
 	db.MigrateDatabase(ctx)
-	common.NewGethClienToContext(ctx, opts.RpcURL)
+	common.NewGethClientToContext(ctx, opts.RpcURL)
 
 	// Setup ethereum transaction sender/signer
 	key, err := crypto.HexToECDSA(opts.PrivateKey)

@@ -15,9 +15,10 @@ package anchor
 
 import (
 	"context"
-	"log"
 	"sort"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/Magicking/faktur-daemon/internal/db"
 	"github.com/Magicking/faktur-daemon/merkle"
@@ -37,6 +38,9 @@ func AnchorDaemon(ctx context.Context, hashC chan common.Hash, merkleRootC chan 
 			if len(hashs) == 0 {
 				continue
 			}
+			if len(hashs) == 1 {
+				hashs = append(hashs, hashs[0])
+			}
 			log.Printf("Hashs length: %v", len(hashs))
 			// For Merkle tree order stability
 			sort.Sort(merkle.OrderedBytes(hashs))
@@ -45,7 +49,13 @@ func AnchorDaemon(ctx context.Context, hashC chan common.Hash, merkleRootC chan 
 			// save to database with merkleroot as key
 			for i, e := range receipts {
 				// Save Receipt
-				db.SaveReceipt(ctx, e, hashs[i], root)
+				err := db.SaveReceipt(ctx, e, hashs[i], root)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"hash": common.BytesToHash(hashs[i].Bytes()).Hex(),
+						"root": root.Hex(),
+					}).Warn(err)
+				}
 			}
 			// Send merkleRoot to blockchain
 			merkleRootC <- root

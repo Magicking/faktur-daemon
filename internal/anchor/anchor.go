@@ -18,9 +18,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
-	"log"
 	"math/big"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/Magicking/faktur-daemon/internal/db"
 	ethereum "github.com/ethereum/go-ethereum"
@@ -92,6 +93,13 @@ func (a *Anchor) updateNonce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	/*
+		val, err := nc.BalanceAt(ctx, a.from, nil)
+		if err != nil {
+			return err
+		}
+		log.Printf("Balance at %s: %s\n", a.from.Hex(), val.String())
+	*/
 	if a.lastNonce >= nonce {
 		return nil
 	}
@@ -120,7 +128,7 @@ func (a *Anchor) updateWaiting(ctx context.Context) {
 				log.Printf("TODO Could not save merkle root %v: %v", txHash.Hex(), err)
 				continue
 			}
-			log.Printf("Root: %v; Merkle: %v", root, txHash)
+			log.Printf("Confirmed: Root: %v; Merkle: %v", root.Hex(), txHash.Hex())
 			continue
 		}
 		// Check if timeout too old
@@ -139,11 +147,7 @@ func (a *Anchor) updateRetry(ctx context.Context, contractAddress common.Address
 		root := common.HexToHash(entry.MerkleRoot)
 		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
 		if err != nil {
-			// TODO Save merkleroot to database with state RETRY
 			log.Printf("Could not sent transaction for hash %v: %v", root.Hex(), err)
-			if err = db.SaveTx(ctx, root, ethcommon.Hash{}, db.NOT_SENT); err != nil {
-				log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
-			}
 			continue
 		}
 		log.Printf("Transaction sent: %v", txHash.Hex())
@@ -155,6 +159,20 @@ func (a *Anchor) updateRetry(ctx context.Context, contractAddress common.Address
 	}
 }
 
+func (a *Anchor) runWatchDog(ctx context.Context, contractAddress common.Address) {
+	ticker := time.NewTicker(time.Duration(10 * time.Second))
+	a.updateNonce(ctx)
+	for {
+		select {
+		case <-ticker.C:
+			a.updateRetry(ctx, contractAddress)
+			a.updateWaiting(ctx)
+			a.updateNonce(ctx)
+		}
+		//SEND
+	}
+}
+
 func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan common.Hash) {
 	if a.lastNonce == 0 {
 		if err := a.updateNonce(ctx); err != nil {
@@ -162,42 +180,33 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 		}
 	}
 
-	go func() {
-		ticker := time.NewTicker(time.Duration(10 * time.Second))
-		for {
-			select {
-			case <-ticker.C:
-				// Get RETRY
-				roots := []common.Hash{}
-				for _, root := range roots {
-					txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
-					if err != nil {
-						// TODO Save merkleroot to database with state RETRY
-						log.Printf("Could not sent transaction for hash %v: %v", root.Hex(), err)
-						continue
-					}
-					log.Printf("Transaction sent: %v", txHash.Hex())
-					// TODO Save merkleroot to database with state WAITING_CONFIRMATION
-				}
-				// GET WAITING_CONFIRMATION
-				// Check if timeout too old
-				// Set to retry if necessary
-				a.updateNonce(ctx)
-			}
-			//SEND
-		}
-	}()
+	go a.runWatchDog(ctx, contractAddress)
 	// Get NOT_SENT
 	// re-emit every TXs in not SENT_STATE
-	for e := range c {
+	for root := range c {
 		// TODO Save merkleroot to database with state NOT_SENT
-		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), e.Bytes())
+		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
 		if err != nil {
-			// TODO Save merkleroot to database with state RETRY
-			log.Printf("Could not sent transaction for hash %v: %v", e.Hex(), err)
+			log.WithFields(log.Fields{
+				"hash": root.Hex(),
+			}).Warn(err)
+			err = db.SaveTx(ctx, root, nil, db.RETRY)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"hash":       "",
+					"merkleRoot": root.Hex(),
+				}).Warn(err)
+			}
 			continue
 		}
 		log.Printf("Transaction sent: %v", txHash.Hex())
-		// TODO Save merkleroot to database with state WAITING_CONFIRMATION
+		// Save merkleroot to database with state WAITING_CONFIRMATION
+		err = db.SaveTx(ctx, root, &txHash, db.WAITING_CONFIRMATION)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"hash":       txHash.Hex(),
+				"merkleRoot": root.Hex(),
+			}).Warn(err)
+		}
 	}
 }

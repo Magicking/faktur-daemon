@@ -40,6 +40,9 @@ package merkle
 
 import (
 	"bytes"
+	"encoding/hex"
+	"log"
+	"strings"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -115,20 +118,22 @@ type Branch struct {
 }
 
 func (b *Branch) String() (ret string) {
-	var buffer bytes.Buffer
+	var buffer strings.Builder
 	for _, r := range b.AuditPath {
 		if r.Left != nil {
-			buffer.WriteRune('0')
-			buffer.Write(r.Left)
+			buffer.WriteRune('L')
+			buffer.WriteString(hex.EncodeToString(r.Left))
 			continue
 		}
 		if r.Right != nil {
-			buffer.WriteRune('1')
-			buffer.Write(r.Right)
+			buffer.WriteRune('R')
+			buffer.WriteString(hex.EncodeToString(r.Right))
+
 			continue
 		}
 		panic("Both left and right leaf unset")
 	}
+	log.Println("Proof:", buffer.String())
 	return buffer.String()
 }
 

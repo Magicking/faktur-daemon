@@ -2,7 +2,8 @@ package db
 
 import (
 	"context"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
@@ -47,11 +48,15 @@ func SaveReceipt(ctx context.Context, proofs *merkle.Branch, targetHash merkle.H
 	return nil
 }
 
-func SaveTx(ctx context.Context, root, txHash ethcommon.Hash, state int) error {
+func SaveTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, state int) error {
 	db := common.DBFromContext(ctx)
+	var _txHash string
+	if txHash != nil {
+		_txHash = txHash.Hex()
+	}
 	dbtx := dbTransaction{
 		MerkleRoot:      root.Hex(),
-		TransactionHash: txHash.Hex(),
+		TransactionHash: _txHash,
 		Status:          state,
 	}
 	if err := db.Create(&dbtx).Error; err != nil {
@@ -62,7 +67,7 @@ func SaveTx(ctx context.Context, root, txHash ethcommon.Hash, state int) error {
 
 func UpdateTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, state int) error {
 	db := common.DBFromContext(ctx)
-	cursor := db.Where(&dbTransaction{MerkleRoot: root.Hex()})
+	cursor := db.Model(&dbTransaction{}).Where("merkle_root = ?", root.Hex())
 	if cursor.Error != nil {
 		return cursor.Error
 	}
@@ -79,7 +84,8 @@ func UpdateTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, 
 
 func FilterByState(ctx context.Context, state int) (dbtx []*dbTransaction, err error) {
 	db := common.DBFromContext(ctx)
-	cursor := db.Where(&dbTransaction{Status: state}).Find(dbtx)
+	dbtx = make([]*dbTransaction, 0)
+	cursor := db.Where(&dbTransaction{Status: state}).Find(&dbtx)
 	if cursor.Error != nil {
 		return nil, err
 	}
