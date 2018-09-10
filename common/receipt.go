@@ -15,8 +15,6 @@
 package common
 
 import (
-	"crypto/ecdsa"
-
 	"github.com/Magicking/faktur-daemon/merkle"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
@@ -27,20 +25,4 @@ type Receipt struct {
 	Proof      merkle.Branch  `json:"proof"`
 	MerkleRoot ethcommon.Hash `json:"merkleRoot"`
 	TargetHash ethcommon.Hash `json:"targetHash"`
-}
-
-// TODO Should move to his own repo/project that should submit only final hash
-type Faktur struct {
-	Receipt
-	PrivateKey *ecdsa.PrivateKey
-}
-
-// TODO
-func NewFaktur(r *Receipt, p *ecdsa.PrivateKey) *Faktur {
-	return nil
-}
-
-// TODO
-func (f *Faktur) Serialize() []byte {
-	return nil
 }
