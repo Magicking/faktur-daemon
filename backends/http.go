@@ -5,12 +5,13 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Magicking/faktur-daemon/merkle"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type HTTPBackend struct {
 	ListeningAddress string // Listening address
-	outChan          chan common.Hash
+	outChan          chan []merkle.Hashable
 }
 
 var HTTPopts struct {
@@ -33,10 +34,14 @@ func (b *HTTPBackend) saveHandler(ctx context.Context, rw http.ResponseWriter, r
 	if !ok || len(hash) == 0 {
 		return
 	}
-	b.outChan <- common.HexToHash(hash[0])
+	var toHashs []merkle.Hashable
+	for _, e := range hash {
+		toHashs = append(toHashs, common.HexToHash(e))
+	}
+	b.outChan <- toHashs
 }
 
-func (b *HTTPBackend) Init(ctx context.Context, hashOut chan common.Hash) error {
+func (b *HTTPBackend) Init(ctx context.Context, hashOut chan []merkle.Hashable) error {
 	b.outChan = hashOut
 	http.HandleFunc("/save", func(rw http.ResponseWriter, r *http.Request) {
 		b.saveHandler(ctx, rw, r)

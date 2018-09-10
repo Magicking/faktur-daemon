@@ -28,6 +28,7 @@ import (
 	"github.com/Magicking/faktur-daemon/common"
 	"github.com/Magicking/faktur-daemon/internal/anchor"
 	"github.com/Magicking/faktur-daemon/internal/db"
+	"github.com/Magicking/faktur-daemon/merkle"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -102,7 +103,7 @@ func main() {
 		}*/
 
 	// create channel hash receiver
-	hashC := make(chan ethcommon.Hash, 1)
+	hashC := make(chan []merkle.Hashable, 1)
 	// TODO create channel preReceipt receiver
 	// create channel merkleRoot receiver
 	merkleRootC := make(chan ethcommon.Hash, 1)

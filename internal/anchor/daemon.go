@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func AnchorDaemon(ctx context.Context, hashC chan common.Hash, merkleRootC chan common.Hash, timeout time.Duration) {
+func AnchorDaemon(ctx context.Context, hashC chan []merkle.Hashable, merkleRootC chan common.Hash, timeout time.Duration) {
 
 	ticker := time.NewTicker(timeout)
 	var hashs []merkle.Hashable
@@ -33,7 +33,7 @@ func AnchorDaemon(ctx context.Context, hashC chan common.Hash, merkleRootC chan 
 		select {
 		case hash := <-hashC:
 			// TODO(6120) emit preReceipt
-			hashs = append(hashs, hash)
+			hashs = append(hashs, hash...)
 		case <-ticker.C:
 			if len(hashs) == 0 {
 				continue
