@@ -128,7 +128,7 @@ func (a *Anchor) updateWaiting(ctx context.Context) {
 				log.Printf("TODO Could not save merkle root %v: %v", txHash.Hex(), err)
 				continue
 			}
-			log.Printf("Confirmed: Root: %v; Merkle: %v", root.Hex(), txHash.Hex())
+			log.Printf("Confirmed: Root: %v; txHash: %v", root.Hex(), txHash.Hex())
 			continue
 		}
 		// Check if timeout too old
