@@ -12,16 +12,16 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
-type dbReceipt struct {
+type DbReceipt struct {
 	gorm.Model
-	Targethash  string
-	Proofs      string // unique
-	MerkleRoot  string
-	Privatekey  string // unique
-	Transaction dbTransaction
+	Targethash    string
+	Proofs        string // unique
+	MerkleRoot    string
+	TransactionId int
+	Transaction   *Dbtransaction
 }
 
-type dbTransaction struct {
+type Dbtransaction struct {
 	gorm.Model
 	MerkleRoot      string
 	TransactionHash string
@@ -35,12 +35,41 @@ const (
 	SENT
 )
 
-func SaveReceipt(ctx context.Context, proofs *merkle.Branch, targetHash merkle.Hashable, root ethcommon.Hash) error {
+func GetTxByRoot(ctx context.Context, root ethcommon.Hash) (*Dbtransaction, error) {
 	db := common.DBFromContext(ctx)
-	dbrcpt := dbReceipt{
-		Targethash: targetHash.Hex(),
-		Proofs:     proofs.String(),
-		MerkleRoot: root.Hex(),
+
+	var tx Dbtransaction
+	cursor := db.Where(Dbtransaction{MerkleRoot: root.Hex()}).First(&tx)
+	if cursor.RecordNotFound() {
+		return nil, nil
+	}
+	if cursor.Error != nil {
+		return nil, cursor.Error
+	}
+	return &tx, nil
+}
+
+func GetReceiptsByHash(ctx context.Context, targetHash ethcommon.Hash) ([]DbReceipt, error) {
+	db := common.DBFromContext(ctx)
+
+	var rcpts []DbReceipt
+	cursor := db.Preload("Transaction").Where(DbReceipt{Targethash: targetHash.Hex()}).Find(&rcpts)
+	if cursor.RecordNotFound() {
+		return nil, nil
+	}
+	if cursor.Error != nil {
+		return nil, cursor.Error
+	}
+	return rcpts, nil
+}
+
+func SaveReceipt(ctx context.Context, proofs *merkle.Branch, targetHash merkle.Hashable, root ethcommon.Hash, tx *Dbtransaction) error {
+	db := common.DBFromContext(ctx)
+	dbrcpt := DbReceipt{
+		Targethash:  targetHash.Hex(),
+		Proofs:      proofs.String(),
+		MerkleRoot:  root.Hex(),
+		Transaction: tx,
 	}
 	if err := db.Create(&dbrcpt).Error; err != nil {
 		return err
@@ -48,33 +77,34 @@ func SaveReceipt(ctx context.Context, proofs *merkle.Branch, targetHash merkle.H
 	return nil
 }
 
-func SaveTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, state int) error {
-	db := common.DBFromContext(ctx)
-	var _txHash string
-	if txHash != nil {
-		_txHash = txHash.Hex()
-	}
-	dbtx := dbTransaction{
-		MerkleRoot:      root.Hex(),
-		TransactionHash: _txHash,
-		Status:          state,
-	}
-	if err := db.Create(&dbtx).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
 func UpdateTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, state int) error {
 	db := common.DBFromContext(ctx)
-	cursor := db.Model(&dbTransaction{}).Where("merkle_root = ?", root.Hex())
+	//TODO Facktorize & optimise
+	var tx Dbtransaction
+	cursor := db.Where("merkle_root = ?", root.Hex()).Find(&tx)
+	if cursor.RecordNotFound() {
+		var _txHash string
+		if txHash != nil {
+			_txHash = txHash.Hex()
+		}
+		dbtx := Dbtransaction{
+			MerkleRoot:      root.Hex(),
+			TransactionHash: _txHash,
+			Status:          state,
+		}
+		if err := db.Create(&dbtx).Error; err != nil {
+			return err
+		}
+		return nil
+	}
+	cursor = db.Model(&Dbtransaction{}).Where("merkle_root = ?", root.Hex())
 	if cursor.Error != nil {
 		return cursor.Error
 	}
 	if txHash != nil {
-		cursor = cursor.Updates(&dbTransaction{Status: state, TransactionHash: txHash.Hex()})
+		cursor = cursor.Updates(&Dbtransaction{Status: state, TransactionHash: txHash.Hex()})
 	} else {
-		cursor = cursor.Updates(&dbTransaction{Status: state})
+		cursor = cursor.Updates(&Dbtransaction{Status: state})
 	}
 	if cursor.Error != nil {
 		return cursor.Error
@@ -82,10 +112,10 @@ func UpdateTx(ctx context.Context, root ethcommon.Hash, txHash *ethcommon.Hash, 
 	return nil
 }
 
-func FilterByState(ctx context.Context, state int) (dbtx []*dbTransaction, err error) {
+func FilterByState(ctx context.Context, state int) (dbtx []*Dbtransaction, err error) {
 	db := common.DBFromContext(ctx)
-	dbtx = make([]*dbTransaction, 0)
-	cursor := db.Where(&dbTransaction{Status: state}).Find(&dbtx)
+	dbtx = make([]*Dbtransaction, 0)
+	cursor := db.Where(&Dbtransaction{Status: state}).Find(&dbtx)
 	if cursor.Error != nil {
 		return nil, err
 	}
@@ -100,11 +130,11 @@ func FilterByState(ctx context.Context, state int) (dbtx []*dbTransaction, err e
 
 func MigrateDatabase(ctx context.Context) {
 	db := common.DBFromContext(ctx)
-	if err := db.AutoMigrate(&dbReceipt{}).Error; err != nil {
+	if err := db.AutoMigrate(&DbReceipt{}).Error; err != nil {
 		db.Close()
 		log.Fatalf("Could not migrate models to database: %v", err)
 	}
-	if err := db.AutoMigrate(&dbTransaction{}).Error; err != nil {
+	if err := db.AutoMigrate(&Dbtransaction{}).Error; err != nil {
 		db.Close()
 		log.Fatalf("Could not migrate models to database: %v", err)
 	}
