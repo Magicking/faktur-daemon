@@ -151,7 +151,7 @@ func (a *Anchor) updateRetry(ctx context.Context, contractAddress common.Address
 			continue
 		}
 		log.Printf("Transaction sent: %v", txHash.Hex())
-		// TODO Save merkleroot to database with state WAITING CONFIRMATION
+		// Save merkleroot to database with state WAITING CONFIRMATION
 		if err = db.UpdateTx(ctx, root, &txHash, db.WAITING_CONFIRMATION); err != nil {
 			log.Printf("TODO Could not save merkle root %v: %v", root.Hex(), err)
 			continue
@@ -184,13 +184,14 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 	// Get NOT_SENT
 	// re-emit every TXs in not SENT_STATE
 	for root := range c {
-		// TODO Save merkleroot to database with state NOT_SENT
 		txHash, err := a.SendWithValueMessage(ctx, contractAddress, new(big.Int), root.Bytes())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"hash": root.Hex(),
 			}).Warn(err)
-			err = db.SaveTx(ctx, root, nil, db.RETRY)
+			// Save in database even if it might already be present
+			// This allow upstream to forget about the tx if need <= TODO CHECK THAT
+			err = db.UpdateTx(ctx, root, nil, db.RETRY)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"hash":       "",
@@ -201,7 +202,7 @@ func (a *Anchor) Run(ctx context.Context, contractAddress common.Address, c chan
 		}
 		log.Printf("Transaction sent: %v", txHash.Hex())
 		// Save merkleroot to database with state WAITING_CONFIRMATION
-		err = db.SaveTx(ctx, root, &txHash, db.WAITING_CONFIRMATION)
+		err = db.UpdateTx(ctx, root, &txHash, db.WAITING_CONFIRMATION)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"hash":       txHash.Hex(),
