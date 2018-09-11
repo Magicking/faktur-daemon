@@ -2,9 +2,11 @@ package backends
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 
+	"github.com/Magicking/faktur-daemon/internal/db"
 	"github.com/Magicking/faktur-daemon/merkle"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -25,7 +27,35 @@ func NewHTTP(ctx context.Context) (*HTTPBackend, error) {
 	return &be, nil
 }
 
-func (b *HTTPBackend) saveHandler(ctx context.Context, rw http.ResponseWriter, r *http.Request) {
+func (b *HTTPBackend) getReceiptsByRootHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		log.Println("Form error: %v", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	hash, ok := r.Form["target_hash"]
+	if !ok || len(hash) == 0 {
+		http.Error(w, "target_hash not found in parameters", 422)
+		return
+	}
+	rcpts, err := db.GetReceiptsByHash(ctx, common.HexToHash(hash[0]))
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	if len(rcpts) == 0 {
+		http.Error(w, "Receipt for hash "+hash[0]+" not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(rcpts)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+}
+
+func (b *HTTPBackend) saveHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Println("Form error: %v", err)
 		return
@@ -43,8 +73,11 @@ func (b *HTTPBackend) saveHandler(ctx context.Context, rw http.ResponseWriter, r
 
 func (b *HTTPBackend) Init(ctx context.Context, hashOut chan []merkle.Hashable) error {
 	b.outChan = hashOut
-	http.HandleFunc("/save", func(rw http.ResponseWriter, r *http.Request) {
-		b.saveHandler(ctx, rw, r)
+	http.HandleFunc("/getreceiptsbyroot", func(w http.ResponseWriter, r *http.Request) {
+		b.getReceiptsByRootHandler(ctx, w, r)
+	})
+	http.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
+		b.saveHandler(ctx, w, r)
 	})
 	return nil
 }
