@@ -47,9 +47,22 @@ func AnchorDaemon(ctx context.Context, hashC chan []merkle.Hashable, merkleRootC
 			merkleRoot, receipts := merkle.MerkleTreeHashProofsFromHashables(hashs)
 			root := common.BytesToHash(merkleRoot)
 			// save to database with merkleroot as key
+			err := db.UpdateTx(ctx, root, nil, db.NOT_SENT)
+			if err != nil {
+				log.WithFields(log.Fields{"root": root.Hex()}).Warn(err)
+				continue
+			}
+			tx, err := db.GetTxByRoot(ctx, root)
+			if err != nil {
+				log.WithFields(log.Fields{"root": root.Hex()}).Warn(err)
+				continue
+			}
+			if tx == nil {
+				log.WithFields(log.Fields{"root": root.Hex()}).Panic(err)
+			}
 			for i, e := range receipts {
 				// Save Receipt
-				err := db.SaveReceipt(ctx, e, hashs[i], root)
+				err := db.SaveReceipt(ctx, e, hashs[i], root, tx)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"hash": common.BytesToHash(hashs[i].Bytes()).Hex(),
